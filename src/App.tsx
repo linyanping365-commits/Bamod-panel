@@ -9,6 +9,7 @@ interface Campaign {
   name: string;
   url: string;
   country: string;
+  createdAt?: string;
 }
 
 const COUNTRIES = [
@@ -290,6 +291,9 @@ export default function App() {
                           <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Campaign <span className="ml-auto">▲</span></div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Created At</div>
+                        </th>
+                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
                           <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Visits <span className="ml-auto">▲</span></div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
@@ -380,6 +384,7 @@ export default function App() {
                           }}
                         >
                           <td className="p-2 border border-gray-200 whitespace-nowrap">{campaign.country} - None - {campaign.name}</td>
+                          <td className="p-2 border border-gray-200 whitespace-nowrap text-gray-500">{campaign.createdAt || '-'}</td>
                           <td className="p-2 border border-gray-200 text-right">0</td>
                           <td className="p-2 border border-gray-200 text-right">0</td>
                           <td className="p-2 border border-gray-200 text-right">0</td>
@@ -848,11 +853,13 @@ export default function App() {
                         setCampaigns(campaigns.map(c => c.id === editingId ? { ...c, name: campaignName, url: campaignUrl, country: campaignCountry } : c));
                         setEditingId(null);
                       } else {
+                        const usTime = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST";
                         setCampaigns([...campaigns, { 
                           id: Date.now().toString(), 
                           name: campaignName, 
                           url: campaignUrl, 
-                          country: campaignCountry 
+                          country: campaignCountry,
+                          createdAt: usTime
                         }]);
                       }
                       
