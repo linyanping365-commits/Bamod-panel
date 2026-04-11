@@ -49,6 +49,7 @@ export default function App() {
   const [campaignCountry, setCampaignCountry] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -56,23 +57,61 @@ export default function App() {
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
+  // Check for existing session on load
+  useEffect(() => {
+    const currentUser = localStorage.getItem('bamod_current_user');
+    if (currentUser) {
+      const user = JSON.parse(currentUser);
+      setEmail(user.email);
+      setName(user.name);
+      setView('dashboard');
+    }
+  }, []);
+
   const simulateNetwork = async (callback: () => void) => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     setIsLoading(false);
     callback();
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
     if (!email || !password) return;
-    simulateNetwork(() => setView('dashboard'));
+    
+    simulateNetwork(() => {
+      const users = JSON.parse(localStorage.getItem('bamod_users') || '[]');
+      const user = users.find((u: any) => u.email === email && u.password === password);
+      
+      if (user) {
+        setName(user.name);
+        localStorage.setItem('bamod_current_user', JSON.stringify(user));
+        setView('dashboard');
+      } else {
+        setAuthError('Invalid email or password. Please register first.');
+      }
+    });
   };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
     if (!email || !password || !name) return;
-    simulateNetwork(() => setView('dashboard'));
+    
+    simulateNetwork(() => {
+      const users = JSON.parse(localStorage.getItem('bamod_users') || '[]');
+      if (users.find((u: any) => u.email === email)) {
+        setAuthError('Email is already registered. Please sign in.');
+        return;
+      }
+      
+      const newUser = { email, password, name };
+      users.push(newUser);
+      localStorage.setItem('bamod_users', JSON.stringify(users));
+      localStorage.setItem('bamod_current_user', JSON.stringify(newUser));
+      setView('dashboard');
+    });
   };
 
   const handleReset = (e: React.FormEvent) => {
@@ -86,6 +125,8 @@ export default function App() {
     setPassword('');
     setName('');
     setResetSent(false);
+    setAuthError('');
+    localStorage.removeItem('bamod_current_user');
     setView('login');
   };
 
@@ -970,6 +1011,11 @@ export default function App() {
               <h2 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
                 Sign in to your account
               </h2>
+              {authError && (
+                <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm rounded">
+                  {authError}
+                </div>
+              )}
               <form className="space-y-5" onSubmit={handleLogin}>
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email address</label>
@@ -1034,7 +1080,7 @@ export default function App() {
                   <div className="text-sm">
                     <button
                       type="button"
-                      onClick={() => setView('forgot')}
+                      onClick={() => { setView('forgot'); setAuthError(''); }}
                       className="font-medium text-blue-600 hover:text-blue-500 transition-colors"
                       disabled={isLoading}
                     >
@@ -1059,13 +1105,18 @@ export default function App() {
           {view === 'register' && (
             <>
               <div className="mb-6 flex items-center">
-                <button onClick={() => setView('login')} className="text-gray-400 hover:text-gray-600 transition-colors" disabled={isLoading}>
+                <button onClick={() => { setView('login'); setAuthError(''); }} className="text-gray-400 hover:text-gray-600 transition-colors" disabled={isLoading}>
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h2 className="text-2xl font-semibold text-gray-900 flex-1 text-center pr-5">
                   Create an account
                 </h2>
               </div>
+              {authError && (
+                <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm rounded">
+                  {authError}
+                </div>
+              )}
               <form className="space-y-5" onSubmit={handleRegister}>
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name</label>
@@ -1146,7 +1197,7 @@ export default function App() {
           {view === 'forgot' && (
             <>
               <div className="mb-6 flex items-center">
-                <button onClick={() => { setView('login'); setResetSent(false); }} className="text-gray-400 hover:text-gray-600 transition-colors" disabled={isLoading}>
+                <button onClick={() => { setView('login'); setResetSent(false); setAuthError(''); }} className="text-gray-400 hover:text-gray-600 transition-colors" disabled={isLoading}>
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h2 className="text-2xl font-semibold text-gray-900 flex-1 text-center pr-5">
@@ -1164,7 +1215,7 @@ export default function App() {
                     We've sent password reset instructions to <strong>{email}</strong>
                   </p>
                   <button
-                    onClick={() => { setView('login'); setResetSent(false); }}
+                    onClick={() => { setView('login'); setResetSent(false); setAuthError(''); }}
                     className="w-full flex justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                   >
                     Back to login
@@ -1213,7 +1264,7 @@ export default function App() {
         {view === 'login' && (
           <p className="mt-8 text-center text-sm text-gray-600">
             Don't have an account?{' '}
-            <button onClick={() => setView('register')} className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
+            <button onClick={() => { setView('register'); setAuthError(''); }} className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
               Sign up for free
             </button>
           </p>
@@ -1221,7 +1272,7 @@ export default function App() {
         {view === 'register' && (
           <p className="mt-8 text-center text-sm text-gray-600">
             Already have an account?{' '}
-            <button onClick={() => setView('login')} className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
+            <button onClick={() => { setView('login'); setAuthError(''); }} className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
               Sign in
             </button>
           </p>
