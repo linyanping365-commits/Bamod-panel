@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Mail, ArrowLeft, LogOut, CheckCircle, Loader2, LayoutDashboard, Home, Calendar, Star, MessageSquare, HelpCircle, Folder, Settings, User, ChevronDown, RefreshCw, Inbox, Target, DollarSign, FileText, Layers, Globe, Network, Repeat, MapPin, Server, Smartphone, Monitor, Compass, Wrench, AlertCircle, Search, Plus, Edit2, Activity, Flag, Upload, BarChart2, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Play } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 type ViewState = 'login' | 'register' | 'forgot' | 'dashboard' | 'home';
+
+interface Campaign {
+  id: string;
+  name: string;
+  url: string;
+  country: string;
+}
 
 const COUNTRIES = [
   "Global", "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
@@ -33,9 +40,21 @@ export default function App() {
   const [resetSent, setResetSent] = useState(false);
   const [isNewCampaignModalOpen, setIsNewCampaignModalOpen] = useState(false);
   const [isCampaignLinksModalOpen, setIsCampaignLinksModalOpen] = useState(false);
-  const [showCampaignRecord, setShowCampaignRecord] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [contextMenu, setContextMenu] = useState<{x: number, y: number, campaignId: string} | null>(null);
   const [campaignName, setCampaignName] = useState('');
   const [campaignUrl, setCampaignUrl] = useState('');
+  const [campaignCountry, setCampaignCountry] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   const simulateNetwork = async (callback: () => void) => {
     setIsLoading(true);
@@ -99,21 +118,21 @@ export default function App() {
                 className={`flex items-center gap-2 px-4 font-medium h-full transition-colors ${view === 'dashboard' ? 'bg-white text-gray-800' : 'text-gray-300 hover:bg-[#34495e]'}`}
               >
                 <LayoutDashboard className="w-4 h-4" />
-                仪表板
+                Dashboard
               </button>
               <button 
                 onClick={() => setView('home')}
                 className={`flex items-center gap-2 px-4 font-medium h-full transition-colors ${view === 'home' ? 'bg-white text-gray-800' : 'text-gray-300 hover:bg-[#34495e]'}`}
               >
                 <Home className="w-4 h-4" />
-                主页
+                Home
               </button>
             </div>
           </div>
           <div className="flex items-center gap-4 text-gray-300">
             <button onClick={handleLogout} className="flex items-center gap-2 hover:text-white transition-colors ml-2">
               <User className="w-4 h-4" />
-              欢迎, {name || email.split('@')[0] || 'User'}
+              Welcome, {name || email.split('@')[0] || 'User'}
             </button>
           </div>
         </nav>
@@ -130,80 +149,140 @@ export default function App() {
                   <input
                     type="text"
                     className="block w-48 pl-8 pr-3 py-1.5 border border-gray-300 rounded text-xs focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="搜索"
+                    placeholder="Search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
                 <button 
-                  onClick={() => setIsNewCampaignModalOpen(true)}
+                  onClick={() => {
+                    setEditingId(null);
+                    setCampaignName('');
+                    setCampaignUrl('');
+                    setCampaignCountry('');
+                    setIsNewCampaignModalOpen(true);
+                  }}
                   className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 text-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  新
+                  New
                 </button>
               </div>
 
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1 ml-2">
-                  <button className="p-1 text-gray-400 hover:text-gray-600"><ChevronsLeft className="w-4 h-4" /></button>
-                  <button className="p-1 text-gray-400 hover:text-gray-600"><ChevronLeft className="w-4 h-4" /></button>
-                  <input type="text" value="1" readOnly className="w-8 text-center border border-gray-300 rounded py-1 text-xs" />
-                  <span className="text-xs text-gray-500 mx-1">从1</span>
-                  <button className="p-1 text-gray-400 hover:text-gray-600"><ChevronRight className="w-4 h-4" /></button>
-                  <button className="p-1 text-gray-400 hover:text-gray-600"><ChevronsRight className="w-4 h-4" /></button>
+                  <button 
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  ><ChevronsLeft className="w-4 h-4" /></button>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  ><ChevronLeft className="w-4 h-4" /></button>
+                  <input type="text" value={currentPage} readOnly className="w-8 text-center border border-gray-300 rounded py-1 text-xs" />
+                  <span className="text-xs text-gray-500 mx-1">of {Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1}</span>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1, p + 1))}
+                    disabled={currentPage === (Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
+                    className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  ><ChevronRight className="w-4 h-4" /></button>
+                  <button 
+                    onClick={() => setCurrentPage(Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
+                    disabled={currentPage === (Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
+                    className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  ><ChevronsRight className="w-4 h-4" /></button>
                 </div>
 
-                <button className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 text-xs ml-2">
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  更新
+                <button 
+                  onClick={() => {
+                    setIsRefreshing(true);
+                    setTimeout(() => setIsRefreshing(false), 1000);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 text-xs ml-2"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Update
                 </button>
               </div>
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 bg-[#f4f6f9] overflow-auto">
-              {showCampaignRecord ? (
+            <div className="flex-1 bg-[#f4f6f9] overflow-auto relative">
+              {contextMenu && (
+                <div 
+                  className="fixed bg-white border border-gray-200 shadow-lg rounded py-1 z-50 text-sm w-32"
+                  style={{ top: contextMenu.y, left: contextMenu.x }}
+                >
+                  <button 
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      const c = campaigns.find(camp => camp.id === contextMenu.campaignId);
+                      if (c) {
+                        setEditingId(c.id);
+                        setCampaignName(c.name);
+                        setCampaignUrl(c.url);
+                        setCampaignCountry(c.country);
+                        setIsNewCampaignModalOpen(true);
+                      }
+                    }}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit
+                  </button>
+                  <button 
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-red-600 flex items-center gap-2"
+                    onClick={() => {
+                      setCampaigns(campaigns.filter(camp => camp.id !== contextMenu.campaignId));
+                    }}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Delete
+                  </button>
+                </div>
+              )}
+              {campaigns.length > 0 ? (
                 <div className="w-max min-w-full">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-[#2c3e50] text-white">
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 广告活动 <span className="ml-auto">▲</span></div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Campaign <span className="ml-auto">▲</span></div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 访问 <span className="ml-auto">▲</span></div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Visits <span className="ml-auto">▲</span></div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 唯一的...</div>
-                        </th>
-                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> WebVie...</div>
-                        </th>
-                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 点击</div>
-                        </th>
-                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 唯一的...</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Unique...</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
                           <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> WebVie...</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 转化 (...</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Clicks</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 转化 (...</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Unique...</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 收入</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> WebVie...</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 隐匿的...</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Conversions (...</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 成本</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Conversions (...</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
-                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> 利润</div>
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Revenue</div>
+                        </th>
+                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Hidden...</div>
+                        </th>
+                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Cost</div>
+                        </th>
+                        <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
+                          <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Profit</div>
                         </th>
                         <th className="p-2 border border-gray-600 font-normal whitespace-nowrap">
                           <div className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> CPV</div>
@@ -247,34 +326,46 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="bg-white">
-                      <tr className="hover:bg-gray-50">
-                        <td className="p-2 border border-gray-200 whitespace-nowrap">United States - None - {campaignName || '1012'}</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">0</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
-                        <td className="p-2 border border-gray-200 text-right">0.000%</td>
-                        <td className="p-2 border border-gray-200 text-right">1 : 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">0.000%</td>
-                        <td className="p-2 border border-gray-200 text-right">0.000%</td>
-                        <td className="p-2 border border-gray-200 text-right">1 : 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">0.000%</td>
-                        <td className="p-2 border border-gray-200 text-right">1 : 0.000</td>
-                        <td className="p-2 border border-gray-200 text-right">0.000%</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
-                        <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
-                      </tr>
+                      {campaigns
+                        .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .slice((currentPage - 1) * 50, currentPage * 50)
+                        .map(campaign => (
+                        <tr 
+                          key={campaign.id} 
+                          className="hover:bg-gray-50 cursor-context-menu"
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({ x: e.clientX, y: e.clientY, campaignId: campaign.id });
+                          }}
+                        >
+                          <td className="p-2 border border-gray-200 whitespace-nowrap">{campaign.country} - None - {campaign.name}</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">0</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
+                          <td className="p-2 border border-gray-200 text-right">0.000%</td>
+                          <td className="p-2 border border-gray-200 text-right">1 : 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">0.000%</td>
+                          <td className="p-2 border border-gray-200 text-right">0.000%</td>
+                          <td className="p-2 border border-gray-200 text-right">1 : 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">0.000%</td>
+                          <td className="p-2 border border-gray-200 text-right">1 : 0.000</td>
+                          <td className="p-2 border border-gray-200 text-right">0.000%</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.0000</td>
+                          <td className="p-2 border border-gray-200 text-right">$ 0.000</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -295,25 +386,26 @@ export default function App() {
           <main className="flex-1 p-6 max-w-[1600px] mx-auto w-full">
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-normal text-gray-800">仪表板</h1>
+              <h1 className="text-2xl font-normal text-gray-800">Dashboard</h1>
               <div className="flex gap-2">
                 <button className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
-                  <Calendar className="w-4 h-4" />
-                  今天
-                  <ChevronDown className="w-3 h-3 ml-1" />
-                </button>
-                <button className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
                   <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                  有效
+                  Active
                   <ChevronDown className="w-3 h-3 ml-1" />
                 </button>
                 <button className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
                   $ USD
                   <ChevronDown className="w-3 h-3 ml-1" />
                 </button>
-                <button className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
-                  <RefreshCw className="w-4 h-4" />
-                  更新
+                <button 
+                  onClick={() => {
+                    setIsRefreshing(true);
+                    setTimeout(() => setIsRefreshing(false), 1000);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Update
                 </button>
               </div>
             </div>
@@ -321,12 +413,12 @@ export default function App() {
             {/* Stats Cards */}
             <div className="grid grid-cols-7 gap-4 mb-8">
               {[
-                { label: '访问', value: '0' },
-                { label: '点击', value: '0' },
-                { label: '转化', value: '0' },
-                { label: '收入', value: '$ 0.00' },
-                { label: '成本', value: '$ 0.00' },
-                { label: '利润', value: '$ 0.00' },
+                { label: 'Visits', value: '0' },
+                { label: 'Clicks', value: '0' },
+                { label: 'Conversions', value: '0' },
+                { label: 'Revenue', value: '$ 0.00' },
+                { label: 'Cost', value: '$ 0.00' },
+                { label: 'Profit', value: '$ 0.00' },
                 { label: 'ROI', value: '0.00%' },
               ].map((stat, idx) => (
                 <div key={idx} className="bg-white border border-gray-200 rounded p-4 text-center shadow-sm">
@@ -338,18 +430,7 @@ export default function App() {
 
             {/* Statistics Section */}
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-base font-bold text-gray-800">统计</h2>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-600">排序方式</span>
-                <button className="flex items-center justify-between w-32 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
-                  <span className="flex items-center gap-2"><span className="text-gray-400">≡</span> 利润</span>
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-                <button className="flex items-center justify-between w-24 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
-                  <span className="flex items-center gap-2"><span className="text-gray-400">↓</span> 降序</span>
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-              </div>
+              <h2 className="text-base font-bold text-gray-800">Statistics</h2>
             </div>
 
             {/* Grid Panels */}
@@ -357,20 +438,20 @@ export default function App() {
               {/* Campaigns */}
               <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden flex flex-col h-64">
                 <div className="bg-[#2c3e50] text-white px-4 py-2 flex justify-between font-bold text-xs">
-                  <span>广告活动</span>
-                  <span>利润</span>
+                  <span>Campaigns</span>
+                  <span>Profit</span>
                 </div>
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                   <Inbox className="w-12 h-12 mb-2 opacity-50" />
-                  <span>没有数据符合此搜索条件</span>
+                  <span>No data matches this search criteria</span>
                 </div>
               </div>
 
               {/* Traffic Sources */}
               <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden flex flex-col h-64">
                 <div className="bg-[#2c3e50] text-white px-4 py-2 flex justify-between font-bold text-xs">
-                  <span>流量源</span>
-                  <span>利润</span>
+                  <span>Traffic Sources</span>
+                  <span>Profit</span>
                 </div>
                 <div className="overflow-y-auto flex-1">
                   <table className="w-full text-left">
@@ -387,20 +468,20 @@ export default function App() {
               {/* Countries */}
               <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden flex flex-col h-64">
                 <div className="bg-[#2c3e50] text-white px-4 py-2 flex justify-between font-bold text-xs">
-                  <span>国家</span>
-                  <span>利润</span>
+                  <span>Countries</span>
+                  <span>Profit</span>
                 </div>
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                   <Inbox className="w-12 h-12 mb-2 opacity-50" />
-                  <span>没有数据符合此搜索条件</span>
+                  <span>No data matches this search criteria</span>
                 </div>
               </div>
 
               {/* Offers */}
               <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden flex flex-col h-64">
                 <div className="bg-[#2c3e50] text-white px-4 py-2 flex justify-between font-bold text-xs">
-                  <span>offers</span>
-                  <span>利润</span>
+                  <span>Offers</span>
+                  <span>Profit</span>
                 </div>
                 <div className="overflow-y-auto flex-1">
                   <table className="w-full text-left">
@@ -428,17 +509,17 @@ export default function App() {
                     iconType="square"
                     iconSize={8}
                   />
-                  <Line type="monotone" dataKey="impressions" name="印象" stroke="#e74c3c" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="visits" name="访问" stroke="#2ecc71" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="clicks" name="点击" stroke="#f1c40f" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="conversionsAll" name="转化 (所有)" stroke="#3498db" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="conversionsApproved" name="转化 (已批准)" stroke="#e67e22" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="revenue" name="收入" stroke="#9b59b6" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="cost" name="成本" stroke="#1abc9c" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="profit" name="利润" stroke="#e84393" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="hiddenProfit" name="隐藏利润" stroke="#00cec9" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="hiddenRevenue" name="隐藏的收入" stroke="#fdcb6e" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="hiddenRevenueConfirmed" name="隐藏的收入 (已确认)" stroke="#ff7675" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="impressions" name="Impressions" stroke="#e74c3c" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="visits" name="Visits" stroke="#2ecc71" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="clicks" name="Clicks" stroke="#f1c40f" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="conversionsAll" name="Conversions (All)" stroke="#3498db" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="conversionsApproved" name="Conversions (Approved)" stroke="#e67e22" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#9b59b6" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="cost" name="Cost" stroke="#1abc9c" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="profit" name="Profit" stroke="#e84393" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="hiddenProfit" name="Hidden Profit" stroke="#00cec9" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="hiddenRevenue" name="Hidden Revenue" stroke="#fdcb6e" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="hiddenRevenueConfirmed" name="Hidden Revenue (Confirmed)" stroke="#ff7675" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -451,7 +532,7 @@ export default function App() {
             <div className="bg-white w-full max-w-6xl h-[90vh] flex flex-col rounded-md shadow-2xl overflow-hidden">
               {/* Modal Header */}
               <div className="bg-[#3b5998] text-white px-4 py-3 flex items-center justify-between">
-                <h2 className="text-lg font-medium">新建广告活动</h2>
+                <h2 className="text-lg font-medium">New Campaign</h2>
                 <div className="flex items-center gap-4 text-sm">
                   <button onClick={() => setIsNewCampaignModalOpen(false)} className="hover:text-gray-200">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -464,12 +545,12 @@ export default function App() {
                 {/* Left Column */}
                 <div className="w-1/2 border-r border-gray-200 flex flex-col h-full">
                   <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <h3 className="text-lg font-medium text-gray-800">1. 广告活动细节</h3>
+                    <h3 className="text-lg font-medium text-gray-800">1. Campaign Details</h3>
                   </div>
                   <div className="p-6 overflow-y-auto flex-1 space-y-5">
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        工作区 <span className="text-red-500">*</span> <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Workspace <span className="text-red-500">*</span> <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
                         <option>Master</option>
@@ -478,32 +559,37 @@ export default function App() {
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        名称 <span className="text-red-500">*</span> <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Name <span className="text-red-500">*</span> <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <input 
                         type="text" 
-                        placeholder="名称" 
+                        placeholder="Name" 
                         value={campaignName}
                         onChange={(e) => setCampaignName(e.target.value)}
                         className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500" 
                       />
-                      <p className="text-xs text-gray-500 mt-1 italic">没有值 - 全球 - 没有值</p>
+                      <p className="text-xs text-gray-500 mt-1 italic">No value - Global - No value</p>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        流量源 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Traffic Source <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                        <option>没有值</option>
+                        <option>No value</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        国家 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Country <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
-                      <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                      <select 
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={campaignCountry}
+                        onChange={(e) => setCampaignCountry(e.target.value)}
+                      >
+                        <option value="">Select a country</option>
                         {COUNTRIES.map(country => (
                           <option key={country} value={country}>{country}</option>
                         ))}
@@ -512,25 +598,25 @@ export default function App() {
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        标签 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" /> <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
+                        Tags <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" /> <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-400 focus:ring-blue-500 focus:border-blue-500">
-                        <option>选择或输入标签</option>
+                        <option>Select or enter tags</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        跟踪域 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Tracking Domain <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                        <option>账户的默认</option>
+                        <option>Account default</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        唯一性期 (小时) <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" /> <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
+                        Uniqueness period (hours) <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" /> <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
                       </label>
                       <div className="flex items-center w-32 border border-gray-300 rounded overflow-hidden">
                         <button className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border-r border-gray-300 text-gray-600">-</button>
@@ -542,27 +628,27 @@ export default function App() {
                     <div className="space-y-2">
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        传递回发, % <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" /> <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
+                        Pass postback, % <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" /> <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
                       </label>
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        流量损失, % <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Traffic loss, % <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
-                        发送自定义转换信息 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Send custom conversion info <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <div className="flex items-center gap-4 text-sm text-gray-700">
                         <label className="flex items-center gap-1">
-                          <input type="radio" name="custom_conv" defaultChecked className="text-[#1abc9c] focus:ring-[#1abc9c]" /> 所有 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                          <input type="radio" name="custom_conv" defaultChecked className="text-[#1abc9c] focus:ring-[#1abc9c]" /> All <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                         <label className="flex items-center gap-1">
-                          <input type="radio" name="custom_conv" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> 只有选定的 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                          <input type="radio" name="custom_conv" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Only selected <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                         <label className="flex items-center gap-1">
-                          <input type="radio" name="custom_conv" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> 除已选择外 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                          <input type="radio" name="custom_conv" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Except selected <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                       </div>
                     </div>
@@ -570,44 +656,44 @@ export default function App() {
                     <div>
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        不要发送状态为Not Specified的转换。 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Do not send conversions with Not Specified status. <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        获取数据从Client Hints <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Get data from Client Hints <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                        <option>默认 (如全局设置)</option>
+                        <option>Default (as global settings)</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        使用机器人过滤器 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Use bot filter <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                        <option>默认 (如全局设置)</option>
+                        <option>Default (as global settings)</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        货币 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Currency <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <select className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                        <option>美元</option>
+                        <option>USD</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
-                        成本模式
+                        Cost Model
                       </label>
                       <div className="space-y-2 text-sm text-gray-700">
                         <label className="flex items-center gap-2">
-                          <input type="radio" name="cost_model" defaultChecked className="text-[#1abc9c] focus:ring-[#1abc9c]" /> 自动 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                          <input type="radio" name="cost_model" defaultChecked className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Auto <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                         <label className="flex items-center gap-2">
                           <input type="radio" name="cost_model" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Auto CPM <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
@@ -625,7 +711,7 @@ export default function App() {
                           <input type="radio" name="cost_model" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> RevShare <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                         <label className="flex items-center gap-2">
-                          <input type="radio" name="cost_model" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> 不跟踪 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                          <input type="radio" name="cost_model" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Do not track <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                       </div>
                     </div>
@@ -635,12 +721,12 @@ export default function App() {
                 {/* Right Column */}
                 <div className="w-1/2 flex flex-col h-full">
                   <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <h3 className="text-lg font-medium text-gray-800">2. 目的</h3>
+                    <h3 className="text-lg font-medium text-gray-800">2. Destination</h3>
                   </div>
                   <div className="p-6 overflow-y-auto flex-1">
                     <div className="flex gap-12 mb-6">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">目的</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Destination</label>
                         <div className="space-y-2 text-sm text-gray-700">
                           <label className="flex items-center gap-2">
                             <input type="radio" name="destination" defaultChecked className="text-[#1abc9c] focus:ring-[#1abc9c]" /> URL
@@ -649,7 +735,7 @@ export default function App() {
                       </div>
                       <div>
                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
-                          重定向模式 <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                          Redirect Mode <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                         </label>
                         <div className="space-y-2 text-sm text-gray-700">
                           <label className="flex items-center gap-2">
@@ -659,7 +745,7 @@ export default function App() {
                             <input type="radio" name="redirect_mode" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Meta
                           </label>
                           <label className="flex items-center gap-2">
-                            <input type="radio" name="redirect_mode" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> 双Meta <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
+                            <input type="radio" name="redirect_mode" className="text-[#1abc9c] focus:ring-[#1abc9c]" /> Double Meta <span className="text-blue-500"><Settings className="w-3.5 h-3.5" /></span>
                           </label>
                         </div>
                       </div>
@@ -667,7 +753,7 @@ export default function App() {
 
                     <div className="mb-4">
                       <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
-                        目标URL <span className="text-red-500">*</span> <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
+                        Destination URL <span className="text-red-500">*</span> <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
                       </label>
                       <textarea 
                         className="w-full border border-gray-300 rounded p-3 text-sm h-32 focus:ring-blue-500 focus:border-blue-500 resize-none"
@@ -677,7 +763,7 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">可用令牌</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Available Tokens</label>
                       <div className="flex flex-wrap gap-2">
                         {[
                           '{clickId}', '{campaignId}', '{campaignName}', '{trafficSourceId}', 
@@ -701,7 +787,7 @@ export default function App() {
               <div className="border-t border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-1 text-green-600 font-medium text-sm">
                   <CheckCircle className="w-4 h-4" />
-                  错误: 0
+                  Errors: 0
                 </div>
                 <div className="flex gap-3">
                   <button 
@@ -709,17 +795,33 @@ export default function App() {
                     className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 text-sm font-medium flex items-center gap-1"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    取消
+                    Cancel
                   </button>
                   <button 
                     onClick={() => {
+                      if (!campaignName || !campaignUrl || !campaignCountry) {
+                        return;
+                      }
+                      
+                      if (editingId) {
+                        setCampaigns(campaigns.map(c => c.id === editingId ? { ...c, name: campaignName, url: campaignUrl, country: campaignCountry } : c));
+                        setEditingId(null);
+                      } else {
+                        setCampaigns([...campaigns, { 
+                          id: Date.now().toString(), 
+                          name: campaignName, 
+                          url: campaignUrl, 
+                          country: campaignCountry 
+                        }]);
+                      }
+                      
                       setIsNewCampaignModalOpen(false);
                       setIsCampaignLinksModalOpen(true);
                     }}
                     className="px-4 py-2 bg-[#1abc9c] text-white rounded hover:bg-[#16a085] text-sm font-medium flex items-center gap-1"
                   >
                     <CheckCircle className="w-4 h-4" />
-                    保存
+                    Save
                   </button>
                 </div>
               </div>
@@ -733,11 +835,11 @@ export default function App() {
             <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
               {/* Modal Header */}
               <div className="bg-[#3b5998] text-white px-4 py-3 flex items-center justify-between">
-                <h2 className="text-lg font-medium">活动链接</h2>
+                <h2 className="text-lg font-medium">Campaign Links</h2>
                 <div className="flex items-center gap-4 text-sm">
                   <button className="flex items-center gap-1 hover:text-gray-200">
                     <MessageSquare className="w-4 h-4" />
-                    实时支持
+                    Live Support
                   </button>
                   <div className="w-px h-4 bg-white/30 mx-2"></div>
                   <button onClick={() => setIsCampaignLinksModalOpen(false)} className="hover:text-gray-200">
@@ -751,11 +853,7 @@ export default function App() {
                 
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="text-sm font-bold text-gray-800">广告活动名称</h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
+                    <h3 className="text-sm font-bold text-gray-800">Campaign Name</h3>
                   </div>
                   <p className="text-sm text-gray-700">{campaignName || '1012'}</p>
                 </div>
@@ -763,13 +861,8 @@ export default function App() {
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      广告活动网址
-                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm13-2h3v2h-3v-2zm-3 0h2v2h-2v-2zm3 3h3v2h-3v-2zm-3 0h2v2h-2v-2zm3 3h3v2h-3v-2zm-3 0h2v2h-2v-2z"/></svg>二维码</span>
+                      Campaign URL
                     </h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
                   </div>
                   <p className="text-sm text-gray-700 break-all">{campaignUrl || 'https://yufyf.bemobtrcks.com/go/dfb37de4-c809-49ab-9fcf-3dc6d56a2442'}</p>
                 </div>
@@ -777,60 +870,25 @@ export default function App() {
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      广告活动测试网址
-                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm13-2h3v2h-3v-2zm-3 0h2v2h-2v-2zm3 3h3v2h-3v-2zm-3 0h2v2h-2v-2zm3 3h3v2h-3v-2zm-3 0h2v2h-2v-2z"/></svg>二维码</span>
+                      Campaign Test URL
                     </h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
                   </div>
                   <p className="text-sm text-gray-700 break-all">{campaignUrl || 'https://yufyf.bemobtrcks.com/test/go/dfb37de4-c809-49ab-9fcf-3dc6d56a2442'}</p>
                 </div>
 
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="text-sm font-bold text-gray-800">广告活动监督JS脚本</h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
+                    <h3 className="text-sm font-bold text-gray-800">Campaign tracking JS script</h3>
                   </div>
                   <p className="text-sm text-gray-700 break-all font-mono bg-gray-50 p-2 rounded border border-gray-100">&lt;script type="text/javascript"&gt;!function()&#123;var a=document.createElement("script");a.t...&lt;/script&gt;</p>
                 </div>
 
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="text-sm font-bold text-gray-800">点击网址</h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-700 break-all">https://yufyf.bemobtrcks.com/click</p>
-                </div>
-
-                <div className="border-b border-gray-100 pb-4">
-                  <div className="flex justify-between items-start mb-1">
-                    <h3 className="text-sm font-bold text-gray-800">多优惠点击URL</h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-700 break-all">https://yufyf.bemobtrcks.com/click/1</p>
-                </div>
-
-                <div className="border-b border-gray-100 pb-4">
-                  <div className="flex justify-between items-start mb-1">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      回发 URL
-                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />自定义转化的跟踪</span>
+                      Postback URL
+                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />Custom conversion tracking</span>
                     </h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
                   </div>
                   <p className="text-sm text-gray-700 break-all">https://yufyf.bemobtrcks.com/postback?cid=REPLACE&payout=OPTIONAL&txid=...</p>
                 </div>
@@ -838,13 +896,9 @@ export default function App() {
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      回发像素
-                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />自定义转化的跟踪</span>
+                      Postback Pixel
+                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />Custom conversion tracking</span>
                     </h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
                   </div>
                   <p className="text-sm text-gray-700 break-all font-mono bg-gray-50 p-2 rounded border border-gray-100">&lt;img src="https://yufyf.bemobtrcks.com/conversion.gif?cid=OPTIONAL&payout=O...&gt;</p>
                 </div>
@@ -852,13 +906,9 @@ export default function App() {
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      回发脚本
-                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />自定义转化的跟踪</span>
+                      Postback Script
+                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />Custom conversion tracking</span>
                     </h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
                   </div>
                   <p className="text-sm text-gray-700 break-all font-mono bg-gray-50 p-2 rounded border border-gray-100">&lt;script async type="text/javascript" src="https://yufyf.bemobtrcks.com/conversion.j...&lt;/script&gt;</p>
                 </div>
@@ -866,14 +916,10 @@ export default function App() {
                 <div className="pb-2">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      URL返回（用于TXT响应）
+                      URL return (for TXT response)
                       <HelpCircle className="w-3.5 h-3.5 text-[#1abc9c]" />
-                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />自定义转化的跟踪</span>
+                      <span className="text-blue-500 font-normal flex items-center gap-1 text-xs cursor-pointer"><Settings className="w-3 h-3" />Custom conversion tracking</span>
                     </h3>
-                    <button className="text-[#1abc9c] hover:text-[#16a085] flex items-center gap-1 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      复制
-                    </button>
                   </div>
                   <p className="text-sm text-gray-700 break-all">https://yufyf.bemobtrcks.com/conversion.txt?cid=REPLACE&payout=OPTIONAL&t...</p>
                 </div>
@@ -890,7 +936,7 @@ export default function App() {
                   className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100 text-sm font-medium flex items-center gap-1 bg-white"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  关闭
+                  Close
                 </button>
                 <button 
                   onClick={() => {
@@ -900,7 +946,7 @@ export default function App() {
                   className="px-4 py-2 bg-[#1abc9c] text-white rounded hover:bg-[#16a085] text-sm font-medium flex items-center gap-1"
                 >
                   <Edit2 className="w-4 h-4" />
-                  编辑
+                  Edit
                 </button>
               </div>
             </div>
