@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "Campaign": {
+      "title": "Campaign",
+      "description": "A campaign record created by a user",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the campaign"
+        },
+        "url": {
+          "type": "string",
+          "description": "Destination URL"
+        },
+        "country": {
+          "type": "string",
+          "description": "Target country"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation time in US EST"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns this campaign"
+        }
+      },
+      "required": ["name", "url", "country", "userId"]
+    }
+  },
+  "firestore": {
+    "/campaigns/{campaignId}": {
+      "schema": {
+        "$ref": "#/entities/Campaign"
+      },
+      "description": "Stores user campaigns"
+    }
+  }
+}

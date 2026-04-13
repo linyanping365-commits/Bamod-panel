@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Mail, ArrowLeft, LogOut, CheckCircle, Loader2, LayoutDashboard, Home, Calendar, Star, MessageSquare, HelpCircle, Folder, Settings, User, ChevronDown, RefreshCw, Inbox, Target, DollarSign, FileText, Layers, Globe, Network, Repeat, MapPin, Server, Smartphone, Monitor, Compass, Wrench, AlertCircle, Search, Plus, Edit2, Activity, Flag, Upload, BarChart2, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Play } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
 
 type ViewState = 'login' | 'register' | 'forgot' | 'dashboard' | 'home';
 
@@ -10,6 +13,7 @@ interface Campaign {
   url: string;
   country: string;
   createdAt?: string;
+  userId?: string;
 }
 
 const COUNTRIES = [
@@ -51,6 +55,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -58,77 +64,100 @@ export default function App() {
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
-  // Check for existing session on load
+  // Firebase Auth Listener
   useEffect(() => {
-    const currentUser = localStorage.getItem('bamod_current_user');
-    if (currentUser) {
-      const user = JSON.parse(currentUser);
-      setEmail(user.email);
-      setName(user.name);
-      setView('dashboard');
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserId(user.uid);
+        setEmail(user.email || '');
+        setName(user.displayName || '');
+        setView('dashboard');
+      } else {
+        setUserId(null);
+        setView('login');
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
   }, []);
 
-  const simulateNetwork = async (callback: () => void) => {
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    callback();
-  };
+  // Firebase Firestore Listener
+  useEffect(() => {
+    if (!isAuthReady || !userId) {
+      setCampaigns([]);
+      return;
+    }
 
-  const handleLogin = (e: React.FormEvent) => {
+    const q = query(collection(db, 'campaigns'), where('userId', '==', userId));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const camps: Campaign[] = [];
+      snapshot.forEach((doc) => {
+        camps.push({ id: doc.id, ...doc.data() } as Campaign);
+      });
+      setCampaigns(camps);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'campaigns');
+    });
+
+    return () => unsubscribe();
+  }, [userId, isAuthReady]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     if (!email || !password) return;
-    
-    simulateNetwork(() => {
-      const users = JSON.parse(localStorage.getItem('bamod_users') || '[]');
-      const user = users.find((u: any) => u.email === email && u.password === password);
-      
-      if (user) {
-        setName(user.name);
-        localStorage.setItem('bamod_current_user', JSON.stringify(user));
-        setView('dashboard');
-      } else {
-        setAuthError('Invalid email or password. Please register first.');
-      }
-    });
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      setAuthError(error.message || 'Failed to sign in.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     if (!email || !password || !name) return;
-    
-    simulateNetwork(() => {
-      const users = JSON.parse(localStorage.getItem('bamod_users') || '[]');
-      if (users.find((u: any) => u.email === email)) {
-        setAuthError('Email is already registered. Please sign in.');
-        return;
-      }
-      
-      const newUser = { email, password, name };
-      users.push(newUser);
-      localStorage.setItem('bamod_users', JSON.stringify(users));
-      localStorage.setItem('bamod_current_user', JSON.stringify(newUser));
-      setView('dashboard');
-    });
+    setIsLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName: name });
+      setName(name); // Update local state
+    } catch (error: any) {
+      setAuthError(error.message || 'Failed to register.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleReset = (e: React.FormEvent) => {
+  const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    simulateNetwork(() => setResetSent(true));
+    setIsLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+    } catch (error: any) {
+      setAuthError(error.message || 'Failed to send reset email.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleLogout = () => {
-    setEmail('');
-    setPassword('');
-    setName('');
-    setResetSent(false);
-    setAuthError('');
-    localStorage.removeItem('bamod_current_user');
-    setView('login');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setEmail('');
+      setPassword('');
+      setName('');
+      setResetSent(false);
+      setAuthError('');
+      setView('login');
+    } catch (error) {
+      console.error('Logout error', error);
+    }
   };
 
   const Logo = () => (
@@ -274,8 +303,13 @@ export default function App() {
                   </button>
                   <button 
                     className="w-full text-left px-4 py-2 hover:bg-gray-100 text-red-600 flex items-center gap-2"
-                    onClick={() => {
-                      setCampaigns(campaigns.filter(camp => camp.id !== contextMenu.campaignId));
+                    onClick={async () => {
+                      try {
+                        await deleteDoc(doc(db, 'campaigns', contextMenu.campaignId));
+                      } catch (error) {
+                        handleFirestoreError(error, OperationType.DELETE, 'campaigns');
+                      }
+                      setContextMenu(null);
                     }}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> Delete
@@ -844,27 +878,39 @@ export default function App() {
                     Cancel
                   </button>
                   <button 
-                    onClick={() => {
-                      if (!campaignName || !campaignUrl || !campaignCountry) {
+                    onClick={async () => {
+                      if (!campaignName || !campaignUrl || !campaignCountry || !userId) {
                         return;
                       }
                       
-                      if (editingId) {
-                        setCampaigns(campaigns.map(c => c.id === editingId ? { ...c, name: campaignName, url: campaignUrl, country: campaignCountry } : c));
-                        setEditingId(null);
-                      } else {
-                        const usTime = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST";
-                        setCampaigns([...campaigns, { 
-                          id: Date.now().toString(), 
-                          name: campaignName, 
-                          url: campaignUrl, 
-                          country: campaignCountry,
-                          createdAt: usTime
-                        }]);
+                      try {
+                        if (editingId) {
+                          const docRef = doc(db, 'campaigns', editingId);
+                          await setDoc(docRef, {
+                            name: campaignName,
+                            url: campaignUrl,
+                            country: campaignCountry,
+                            userId: userId,
+                            createdAt: campaigns.find(c => c.id === editingId)?.createdAt || new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST"
+                          }, { merge: true });
+                          setEditingId(null);
+                        } else {
+                          const usTime = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST";
+                          const newDocRef = doc(collection(db, 'campaigns'));
+                          await setDoc(newDocRef, { 
+                            name: campaignName, 
+                            url: campaignUrl, 
+                            country: campaignCountry,
+                            createdAt: usTime,
+                            userId: userId
+                          });
+                        }
+                        
+                        setIsNewCampaignModalOpen(false);
+                        setIsCampaignLinksModalOpen(true);
+                      } catch (error) {
+                        handleFirestoreError(error, OperationType.WRITE, 'campaigns');
                       }
-                      
-                      setIsNewCampaignModalOpen(false);
-                      setIsCampaignLinksModalOpen(true);
                     }}
                     className="px-4 py-2 bg-[#1abc9c] text-white rounded hover:bg-[#16a085] text-sm font-medium flex items-center gap-1"
                   >
