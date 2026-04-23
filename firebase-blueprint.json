@@ -21,6 +21,10 @@
           "type": "string",
           "description": "Creation time in US EST"
         },
+        "timestamp": {
+          "type": "integer",
+          "description": "Numeric timestamp for sorting"
+        },
         "userId": {
           "type": "string",
           "description": "The ID of the user who owns this campaign"

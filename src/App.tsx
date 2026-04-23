@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent, useMemo } from 'react';
 import { Eye, EyeOff, Lock, Mail, ArrowLeft, LogOut, CheckCircle, Loader2, LayoutDashboard, Home, Calendar, Star, MessageSquare, HelpCircle, Folder, Settings, User, ChevronDown, RefreshCw, Inbox, Target, DollarSign, FileText, Layers, Globe, Network, Repeat, MapPin, Server, Smartphone, Monitor, Compass, Wrench, AlertCircle, Search, Plus, Edit2, Activity, Flag, Upload, BarChart2, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Play } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
+import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
 
 type ViewState = 'login' | 'register' | 'forgot' | 'dashboard' | 'home';
@@ -14,6 +14,7 @@ interface Campaign {
   country: string;
   createdAt?: string;
   userId?: string;
+  timestamp?: number;
 }
 
 const COUNTRIES = [
@@ -54,9 +55,16 @@ export default function App() {
   const [campaignCountry, setCampaignCountry] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [authError, setAuthError] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [showCampaignRecord, setShowCampaignRecord] = useState(false); // UI state for showing/hiding record details
+
+  // Memoized sorted campaigns to ensure newest is always at top
+  const sortedCampaigns = useMemo(() => {
+    return [...campaigns].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }, [campaigns]);
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -94,6 +102,8 @@ export default function App() {
       snapshot.forEach((doc) => {
         camps.push({ id: doc.id, ...doc.data() } as Campaign);
       });
+      // Sort by timestamp desc (newest first)
+      camps.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setCampaigns(camps);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'campaigns');
@@ -102,7 +112,7 @@ export default function App() {
     return () => unsubscribe();
   }, [userId, isAuthReady]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setAuthError('');
     if (!email || !password) return;
@@ -116,7 +126,7 @@ export default function App() {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
     setAuthError('');
     if (!email || !password || !name) return;
@@ -132,7 +142,7 @@ export default function App() {
     }
   };
 
-  const handleReset = async (e: React.FormEvent) => {
+  const handleReset = async (e: FormEvent) => {
     e.preventDefault();
     if (!email) return;
     setIsLoading(true);
@@ -170,6 +180,16 @@ export default function App() {
       <span className="text-3xl font-bold text-gray-900 tracking-tight">Bamod</span>
     </div>
   );
+
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-[#f4f6f9] flex flex-col items-center justify-center font-sans">
+        <Logo />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mt-4" />
+        <p className="text-sm text-gray-500 mt-2">Connecting to tracker...</p>
+      </div>
+    );
+  }
 
   if (view === 'dashboard' || view === 'home') {
     return (
@@ -253,15 +273,15 @@ export default function App() {
                     className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
                   ><ChevronLeft className="w-4 h-4" /></button>
                   <input type="text" value={currentPage} readOnly className="w-8 text-center border border-gray-300 rounded py-1 text-xs" />
-                  <span className="text-xs text-gray-500 mx-1">of {Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1}</span>
+                  <span className="text-xs text-gray-500 mx-1">of {Math.ceil(sortedCampaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1}</span>
                   <button 
-                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1, p + 1))}
-                    disabled={currentPage === (Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
+                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedCampaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1, p + 1))}
+                    disabled={currentPage === (Math.ceil(sortedCampaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
                     className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
                   ><ChevronRight className="w-4 h-4" /></button>
                   <button 
-                    onClick={() => setCurrentPage(Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
-                    disabled={currentPage === (Math.ceil(campaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
+                    onClick={() => setCurrentPage(Math.ceil(sortedCampaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
+                    disabled={currentPage === (Math.ceil(sortedCampaigns.filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase())).length / 50) || 1)}
                     className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
                   ><ChevronsRight className="w-4 h-4" /></button>
                 </div>
@@ -269,7 +289,8 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setIsRefreshing(true);
-                    setTimeout(() => setIsRefreshing(false), 1000);
+                    // Force visual refresh
+                    setTimeout(() => setIsRefreshing(false), 800);
                   }}
                   className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50 text-xs ml-2"
                 >
@@ -405,7 +426,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="bg-white">
-                      {campaigns
+                      {sortedCampaigns
                         .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.country.toLowerCase().includes(searchQuery.toLowerCase()))
                         .slice((currentPage - 1) * 50, currentPage * 50)
                         .map(campaign => (
@@ -480,7 +501,8 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setIsRefreshing(true);
-                    setTimeout(() => setIsRefreshing(false), 1000);
+                    // Force re-fetch/re-order logically by cycling isRefreshing
+                    setTimeout(() => setIsRefreshing(false), 800);
                   }}
                   className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
                 >
@@ -493,7 +515,7 @@ export default function App() {
             {/* Stats Cards */}
             <div className="grid grid-cols-7 gap-4 mb-8">
               {[
-                { label: 'Visits', value: '0' },
+                { label: 'Visits', value: sortedCampaigns.length.toString() },
                 { label: 'Clicks', value: '0' },
                 { label: 'Conversions', value: '0' },
                 { label: 'Revenue', value: '$ 0.00' },
@@ -519,11 +541,26 @@ export default function App() {
               <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden flex flex-col h-64">
                 <div className="bg-[#2c3e50] text-white px-4 py-2 flex justify-between font-bold text-xs">
                   <span>Campaigns</span>
-                  <span>Profit</span>
+                  <span>Created At</span>
                 </div>
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-                  <Inbox className="w-12 h-12 mb-2 opacity-50" />
-                  <span>No data matches this search criteria</span>
+                <div className="flex-1 overflow-y-auto">
+                  {sortedCampaigns.length > 0 ? (
+                    <table className="w-full text-left text-xs">
+                      <tbody>
+                        {sortedCampaigns.map((c) => (
+                          <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-2 text-gray-700">{c.name}</td>
+                            <td className="px-4 py-2 text-right text-gray-500">{c.createdAt}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-8 text-gray-400">
+                      <Inbox className="w-8 h-8 mb-2 opacity-50" />
+                      <span>No campaigns found</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -878,30 +915,36 @@ export default function App() {
                     Cancel
                   </button>
                   <button 
+                    disabled={isSaving}
                     onClick={async () => {
-                      if (!campaignName || !campaignUrl || !campaignCountry || !userId) {
+                      if (!campaignName || !campaignUrl || !campaignCountry || !userId || isSaving) {
                         return;
                       }
                       
+                      setIsSaving(true);
                       try {
                         if (editingId) {
                           const docRef = doc(db, 'campaigns', editingId);
+                          const existingCamp = campaigns.find(c => c.id === editingId);
                           await setDoc(docRef, {
                             name: campaignName,
                             url: campaignUrl,
                             country: campaignCountry,
                             userId: userId,
-                            createdAt: campaigns.find(c => c.id === editingId)?.createdAt || new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST"
+                            createdAt: existingCamp?.createdAt || new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST",
+                            timestamp: existingCamp?.timestamp || Date.now()
                           }, { merge: true });
                           setEditingId(null);
                         } else {
-                          const usTime = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST";
+                          const now = Date.now();
+                          const usTime = new Date(now).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST";
                           const newDocRef = doc(collection(db, 'campaigns'));
                           await setDoc(newDocRef, { 
                             name: campaignName, 
                             url: campaignUrl, 
                             country: campaignCountry,
                             createdAt: usTime,
+                            timestamp: now,
                             userId: userId
                           });
                         }
@@ -910,12 +953,23 @@ export default function App() {
                         setIsCampaignLinksModalOpen(true);
                       } catch (error) {
                         handleFirestoreError(error, OperationType.WRITE, 'campaigns');
+                      } finally {
+                        setIsSaving(false);
                       }
                     }}
-                    className="px-4 py-2 bg-[#1abc9c] text-white rounded hover:bg-[#16a085] text-sm font-medium flex items-center gap-1"
+                    className={`px-4 py-2 text-white rounded text-sm font-medium flex items-center gap-1 transition-colors ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#1abc9c] hover:bg-[#16a085]'}`}
                   >
-                    <CheckCircle className="w-4 h-4" />
-                    Save
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Save
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

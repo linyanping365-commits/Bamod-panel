@@ -55,12 +55,13 @@ service cloud.firestore {
     }
     
     function isValidCampaign(data) {
-      return hasOnlyAllowedFields(['name', 'url', 'country', 'createdAt', 'userId']) &&
-             hasRequiredFields(['name', 'url', 'country', 'userId']) &&
+      return hasOnlyAllowedFields(['name', 'url', 'country', 'createdAt', 'userId', 'timestamp']) &&
+             hasRequiredFields(['name', 'url', 'country', 'userId', 'timestamp']) &&
              isValidString('name', 1, 100) &&
              isValidString('url', 1, 1000) &&
              isValidString('country', 1, 100) &&
              isValidOptionalString('createdAt', 1, 100) &&
+             request.resource.data.timestamp is int &&
              request.resource.data.userId == request.auth.uid;
     }
 
