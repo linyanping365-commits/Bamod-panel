@@ -66,6 +66,21 @@ export default function App() {
     return [...campaigns].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   }, [campaigns]);
 
+  // Helper to format date in 24h format
+  const formatDateTime = (timestamp?: number, fallbackString?: string) => {
+    if (!timestamp) return fallbackString || '-';
+    return new Date(timestamp).toLocaleString("en-US", { 
+      timeZone: "America/New_York", 
+      hour12: false,
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    }) + " EST";
+  };
+
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
     document.addEventListener('click', handleClick);
@@ -439,7 +454,7 @@ export default function App() {
                           }}
                         >
                           <td className="p-2 border border-gray-200 whitespace-nowrap">{campaign.country} - None - {campaign.name}</td>
-                          <td className="p-2 border border-gray-200 whitespace-nowrap text-gray-500">{campaign.createdAt || '-'}</td>
+                          <td className="p-2 border border-gray-200 whitespace-nowrap text-gray-500">{formatDateTime(campaign.timestamp, campaign.createdAt)}</td>
                           <td className="p-2 border border-gray-200 text-right">0</td>
                           <td className="p-2 border border-gray-200 text-right">0</td>
                           <td className="p-2 border border-gray-200 text-right">0</td>
@@ -550,7 +565,7 @@ export default function App() {
                         {sortedCampaigns.map((c) => (
                           <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="px-4 py-2 text-gray-700">{c.name}</td>
-                            <td className="px-4 py-2 text-right text-gray-500">{c.createdAt}</td>
+                            <td className="px-4 py-2 text-right text-gray-500">{formatDateTime(c.timestamp, c.createdAt)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -926,18 +941,40 @@ export default function App() {
                         if (editingId) {
                           const docRef = doc(db, 'campaigns', editingId);
                           const existingCamp = campaigns.find(c => c.id === editingId);
+                          const now = Date.now();
+                          const timestamp = existingCamp?.timestamp || now;
+                          const formattedTime = new Date(timestamp).toLocaleString("en-US", { 
+                            timeZone: "America/New_York", 
+                            hour12: false,
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric', 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit' 
+                          }) + " EST";
+                          
                           await setDoc(docRef, {
                             name: campaignName,
                             url: campaignUrl,
                             country: campaignCountry,
                             userId: userId,
-                            createdAt: existingCamp?.createdAt || new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST",
-                            timestamp: existingCamp?.timestamp || Date.now()
+                            createdAt: formattedTime,
+                            timestamp: timestamp
                           }, { merge: true });
                           setEditingId(null);
                         } else {
                           const now = Date.now();
-                          const usTime = new Date(now).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "medium" }) + " EST";
+                          const usTime = new Date(now).toLocaleString("en-US", { 
+                            timeZone: "America/New_York", 
+                            hour12: false,
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric', 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit' 
+                          }) + " EST";
                           const newDocRef = doc(collection(db, 'campaigns'));
                           await setDoc(newDocRef, { 
                             name: campaignName, 
